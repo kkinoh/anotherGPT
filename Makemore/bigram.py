@@ -1,5 +1,6 @@
 import torch
 from data import *
+from emoji_wechat_support import *
 
 words = import_words('names.txt', encoding_method='utf-8')
 words_split = split_words(words)
