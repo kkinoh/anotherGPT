@@ -1,6 +1,9 @@
 """
+
 This implementation supports special characters, namely '[...]'.
 This includes emojis, speakers, etc.
+
+
 """
 
 import re
