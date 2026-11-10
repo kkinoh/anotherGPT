@@ -10,6 +10,7 @@ class Vocab:
     stoi : dict[str, int]
     itos : dict[int, str]
     splitting_char : str
+    block_size: int
 
     @property
     def size(self) -> int:
@@ -17,15 +18,15 @@ class Vocab:
 
     def encode(self, word: str) -> list[int]:
         # 'result' -> '.result.' in int
-        return [self.stoi[self.splitting_char]] + [self.stoi[c] for c in word] + [self.stoi[self.splitting_char]]
+        return [self.stoi[self.splitting_char] for _ in range(self.block_size)] + [self.stoi[c] for c in word] + [self.stoi[self.splitting_char]]
 
     def decode(self, codes: list[int], to_str=False) -> list[str] | str:
         if to_str:
-            return ''.join([self.itos[char] for char in codes[1:-1]])
+            return ''.join([self.itos[char] for char in codes[self.block_size:-1]])
         # Returns a list if to_str is False, else a string.
-        return [self.itos[i] for i in codes[1:-1]]
+        return codes[self.block_size:-1]
 
-def build_vocab(words: list[str], splitting_char='.') -> Vocab:
+def build_vocab(words: list[str], splitting_char='.', block_size=1) -> Vocab:
     chars = sorted(set(''.join(words)))
     if splitting_char in chars:
         raise ValueError("Splitting character must not be in words.")
@@ -33,7 +34,7 @@ def build_vocab(words: list[str], splitting_char='.') -> Vocab:
     stoi[splitting_char] = 0
     itos = {i: s for s, i in stoi.items()}
 
-    return Vocab(stoi, itos, splitting_char)
+    return Vocab(stoi, itos, splitting_char, block_size)
 
 def import_words(path, encoding_method) -> list[str]:
     with open(path, encoding=encoding_method) as f:
