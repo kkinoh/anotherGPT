@@ -1,5 +1,6 @@
-from bigramMLP import DIMENSIONS
+from bigramMLP import NEURONS
 from bigramMLP import BLOCK_SIZE
+from bigramMLP import DIMENSIONS
 from bigramMLP import trainMLP
 from data import *
 from pathlib import Path
@@ -7,8 +8,8 @@ from collections import Counter
 
 _MIN_FREQ = 3
 
-_NAMES_FILE = Path(__file__).with_name('names.txt')
-words = import_words(_NAMES_FILE, encoding_method='utf-8')
+_CLEAN = Path(__file__).parent.parent / "Data" / "clean.txt"
+words = import_words(_CLEAN, encoding_method='utf-8')
 
 """Trimming out rare characters. Copied from 'bigram_for_chat.py'."""
 freq = Counter(''.join(words)) # Dict[char] -> occurences
@@ -20,6 +21,5 @@ words = [
 ] # Correct implementation.
 
 vocab = build_vocab(words, block_size=BLOCK_SIZE, splitting_char='\x00')
-train = [vocab.encode(word) for word in words]
 
-trainMLP(train, vocab, is_chat=True)
+trainMLP(vocab, words)

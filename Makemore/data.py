@@ -24,7 +24,7 @@ class Vocab:
         if to_str:
             return ''.join([self.itos[char] for char in codes[self.block_size:-1]])
         # Returns a list if to_str is False, else a string.
-        return codes[self.block_size:-1]
+        return [self.itos[i] for i in codes[self.block_size:-1]]
 
 def build_vocab(words: list[str], splitting_char='.', block_size=1) -> Vocab:
     chars = sorted(set(''.join(words)))
