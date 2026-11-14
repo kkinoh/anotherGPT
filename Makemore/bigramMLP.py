@@ -43,8 +43,11 @@ def trainMLP(vocab: Vocab, words: list[list[int]]):
     Xtest, Ytest = _build(split[2])
 
     """Input."""
-    W1 = torch.randn((DIMENSIONS * vocab.block_size, NEURONS), generator=g) * 0.1
-    B1 = torch.randn(NEURONS, generator=g)
+    std = 5 / 3 / ((DIMENSIONS * vocab.block_size) ** 0.5)
+    # torch.nn.init.kaiming_normal_
+    # Makes sure variant stays roughly equal to 1.
+    W1 = torch.randn((DIMENSIONS * vocab.block_size, NEURONS), generator=g) * std
+    # B1 = torch.randn(NEURONS, generator=g)
     C = torch.randn((vocab.size, DIMENSIONS), generator=g) * 0.1
     # C transforms a code (of a character) into a vector.
 
@@ -60,14 +63,22 @@ def trainMLP(vocab: Vocab, words: list[list[int]]):
     """Output."""
     W2 = torch.randn((NEURONS, vocab.size), generator=g) * 0.1
     B2 = torch.randn(vocab.size, generator=g)
-    
+    # Multiplying by 0.1 reduces :
+    # 1.tanh being constantly 1.
+    # 2.softmax being wrong.
+
+    BNgain = torch.ones((1, NEURONS))
+    BNbias = torch.zeros((1, NEURONS))
+    BNmean_running = torch.zeros((1, NEURONS))
+    BNstd_running = torch.ones((1, NEURONS))
+
     """
     counts = logits.exp() # Softmax.
     prob = counts / counts.sum(1, keepdim=True) # Note broadcasting.
     loss = -prob[torch.arange(32), Y].log().mean()
 
     """
-    parameters = [W1, W2, B1, B2, C]
+    parameters = [W1, W2, B2, C, BNgain, BNbias]
     for param in parameters:
         param.requires_grad = True
 
@@ -83,7 +94,25 @@ def trainMLP(vocab: Vocab, words: list[list[int]]):
             """Minibatch construct."""
             ix = torch.randint(0, X.shape[0], (32, ), generator=g)
             emb = C[X[ix]]
-            h = torch.tanh(emb.view(-1, DIMENSIONS * vocab.block_size) @ W1 + B1)
+            embcat = emb.view(-1, DIMENSIONS * vocab.block_size)
+            """
+            Batch Normalization:
+            1. Calculate batch mean.
+            2. Calculate batch variance.
+            3. Normalize.
+            4. Scale and shift.
+            """
+            hpreact = embcat @ W1 # + B1
+            """B1 is not useful anymore because it issubstracted in (hpreact - BNmeani)."""
+            BNmeani = hpreact.mean(0, keepdim=True)
+            BNstdi = hpreact.std(0, keepdim=True)
+
+            with torch.no_grad():
+                BNmean_running = 0.999 * BNmean_running + 0.001 * BNmeani
+                BNstd_running = 0.999 * BNstd_running + 0.001 * BNstdi
+            
+            hpreact = BNgain * ((hpreact - BNmeani) / BNstdi) + BNbias
+            h = torch.tanh(hpreact)
             logits = h @ W2 + B2
             loss = F.cross_entropy(logits, Y[ix])
 
@@ -103,7 +132,10 @@ def trainMLP(vocab: Vocab, words: list[list[int]]):
             if i % 1000 == 0:
                 with torch.no_grad():
                     embval = C[Xval]
-                    hval = torch.tanh(embval.view(-1, DIMENSIONS * vocab.block_size) @ W1 + B1)
+                    embcatval = embval.view(-1, DIMENSIONS * vocab.block_size)
+                    hpreactval = embcatval @ W1 # + B1
+                    hpreactval = BNgain * ((hpreactval - BNmean_running) / BNstd_running) + BNbias
+                    hval = torch.tanh(hpreactval)
                     logitsval =  hval @ W2 + B2
                     lossval = F.cross_entropy(logitsval, Yval)
                     print(f'Val loss: {lossval}')
@@ -125,11 +157,14 @@ def trainMLP(vocab: Vocab, words: list[list[int]]):
                 for _ in range(max_len):
                     emb = C[torch.tensor([context])]
                     # Size is (1, block size, dimensions)
-                    h = torch.tanh(emb.view(1, -1) @ W1 + B1)
+                    embcat = emb.view(-1, DIMENSIONS * vocab.block_size)
+                    hpreact = embcat @ W1 # + B1
+                    hpreact = BNgain * ((hpreact - BNmean_running) / BNstd_running) + BNbias
                     # Flattens a number of block_size words (each being a vector with dimensions) into one vector.
                     # Ex. (3, 2), (4, 5), (6, 7) -> (3, 2, 4, 5, 6, 7), with
                     # block_size = 3
                     # dimensions = 2
+                    h = torch.tanh(hpreact)
                     logits = h @ W2 + B2 # Size is (1, vocab.size)
                     # 1 is batch size.
                     probs = F.softmax(logits, dim=1)
